@@ -1,0 +1,11 @@
+[Unit]
+Description=TradeVector P2 — ogni ora al minuto 5
+Requires=tradevector-p2.service
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,152 @@
+experiments:
+  oi_compression_breakout_btc_1h:
+    hypothesis: oi_compression_breakout
+    symbol: BTCUSDT
+    timeframe: 1h
+    leads: [1, 2, 4, 8]
+    windows:
+      - name: W1
+        train_end: "2023-06-01"
+        test_start: "2023-06-01"
+        test_end: "2023-12-31"
+      - name: W2
+        train_end: "2024-01-01"
+        test_start: "2024-01-01"
+        test_end: "2024-06-30"
+      - name: W3
+        train_end: "2024-07-01"
+        test_start: "2024-07-01"
+        test_end: "2024-12-31"
+    status: pending
+
+  oi_compression_breakout_eth_1h:
+    hypothesis: oi_compression_breakout
+    symbol: ETHUSDT
+    timeframe: 1h
+    leads: [1, 2, 4, 8]
+    windows:
+      - name: W1
+        train_end: "2023-06-01"
+        test_start: "2023-06-01"
+        test_end: "2023-12-31"
+      - name: W2
+        train_end: "2024-01-01"
+        test_start: "2024-01-01"
+        test_end: "2024-06-30"
+      - name: W3
+        train_end: "2024-07-01"
+        test_start: "2024-07-01"
+        test_end: "2024-12-31"
+    status: pending
+
+  oi_relative_positioning_edge_btcusdt_1h:
+    hypothesis: oi_relative_positioning_edge
+    symbol: BTCUSDT
+    timeframe: 1h
+    leads: [4, 8]
+    signal_column: oi_ma_ratio
+    invert_signal: true
+    windows:
+      - name: W1
+        train_end: "2026-05-18"
+        test_start: "2026-05-18"
+        test_end: "2026-05-23"
+      - name: W2
+        train_end: "2026-05-23"
+        test_start: "2026-05-23"
+        test_end: "2026-05-28"
+      - name: W3
+        train_end: "2026-05-28"
+        test_start: "2026-05-28"
+        test_end: "2026-06-03"
+    status: active
+
+  oi_relative_positioning_edge_ethusdt_1h:
+    hypothesis: oi_relative_positioning_edge
+    symbol: ETHUSDT
+    timeframe: 1h
+    leads: [4, 8]
+    signal_column: oi_ma_ratio
+    invert_signal: true
+    windows:
+      - name: W1
+        train_end: "2026-05-18"
+        test_start: "2026-05-18"
+        test_end: "2026-05-23"
+      - name: W2
+        train_end: "2026-05-23"
+        test_start: "2026-05-23"
+        test_end: "2026-05-28"
+      - name: W3
+        train_end: "2026-05-28"
+        test_start: "2026-05-28"
+        test_end: "2026-06-03"
+    status: pending
+
+  funding_positioning_reversal_btcusdt_1h:
+    hypothesis: funding_positioning_reversal
+    symbol: BTCUSDT
+    timeframe: 1h
+    leads: [4, 8, 24]
+    signal_column: funding_zscore
+    invert_signal: true
+    windows:
+      - name: W1
+        test_start: "2024-03-18"
+        test_end: "2024-06-30"
+      - name: W2
+        test_start: "2024-07-01"
+        test_end: "2024-09-30"
+      - name: W3
+        test_start: "2024-10-01"
+        test_end: "2024-12-31"
+      - name: W4
+        test_start: "2025-01-01"
+        test_end: "2025-03-31"
+      - name: W5
+        test_start: "2025-04-01"
+        test_end: "2025-06-30"
+      - name: W6
+        test_start: "2025-07-01"
+        test_end: "2025-09-30"
+      - name: W7
+        test_start: "2025-10-01"
+        test_end: "2025-12-31"
+      - name: W8
+        test_start: "2026-01-01"
+        test_end: "2026-03-18"
+    status: active
+
+  funding_positioning_reversal_ethusdt_1h:
+    hypothesis: funding_positioning_reversal
+    symbol: ETHUSDT
+    timeframe: 1h
+    leads: [4, 8, 24]
+    signal_column: funding_zscore
+    invert_signal: true
+    windows:
+      - name: W1
+        test_start: "2024-03-18"
+        test_end: "2024-06-30"
+      - name: W2
+        test_start: "2024-07-01"
+        test_end: "2024-09-30"
+      - name: W3
+        test_start: "2024-10-01"
+        test_end: "2024-12-31"
+      - name: W4
+        test_start: "2025-01-01"
+        test_end: "2025-03-31"
+      - name: W5
+        test_start: "2025-04-01"
+        test_end: "2025-06-30"
+      - name: W6
+        test_start: "2025-07-01"
+        test_end: "2025-09-30"
+      - name: W7
+        test_start: "2025-10-01"
+        test_end: "2025-12-31"
+      - name: W8
+        test_start: "2026-01-01"
+        test_end: "2026-03-18"
+    status: pending

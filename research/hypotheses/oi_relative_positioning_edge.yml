@@ -1,0 +1,68 @@
+id: oi_relative_positioning_edge
+name: OI Relative Positioning Edge
+description: >
+  Quando l'OI è al di sotto della propria media mobile (leva compressa),
+  il mercato tende a salire nei periodi successivi (4h-8h).
+  Meccanismo: OI elevata relativa = leva accumulata → esaurimento → reversal.
+  OI bassa relativa = mercato non sfruttato → spazio per continuazione/espansione.
+  Questo è il meccanismo classico del leverage squeeze, ma nella direzione
+  opposta all'ipotesi oi_compression_breakout originale.
+
+data_sources:
+  - binance_open_interest
+  - binance_klines
+
+information_new: "Relative leverage positioning (OI vs rolling mean)"
+why_should_work: >
+  OI above rolling MA signals crowded leverage → exhaustion and reversal.
+  OI below rolling MA signals under-positioning → room to run.
+  P0 validated on BTCUSDT 1h: inverted oi_ma_ratio PASS at h4/h8 with
+  |lead_corr|>0.1 and beats random baseline 100%.
+
+event_predicted: "directional continuation from low relative OI positioning"
+
+primary_signal: oi_ma_ratio
+signal_direction: inverted
+signal_note: "Use -oi_ma_ratio (or --invert-signal flag in p0_signal_probe.py)"
+
+horizons:
+  - 4h
+  - 8h
+
+assets:
+  - BTCUSDT
+  - ETHUSDT
+
+features:
+  - oi_ma_ratio
+  - oi_price_divergence
+  - oi_zscore
+  - volume_zscore
+  - atr_norm
+
+targets:
+  primary: directional_h8
+  secondary: directional_h4
+
+success_criteria:
+  gross_expectancy: "> 0.0001"
+  lead_correlation: "|corr| > 0.1"
+  stability: "consistent across W1/W2/W3 windows"
+  asset_stability: "consistent across BTC/ETH"
+  random_baseline: "beats random > 95% trials"
+
+stop_criteria:
+  gross_expectancy: "~ 0 or negative"
+  lead_correlation: "|corr| < 0.05"
+  window_breakdown: "edge disappears in any window"
+
+p0_result_btcusdt_1h:
+  date: "2026-06-03"
+  signal: "-oi_ma_ratio"
+  verdict: "PASS"
+  h4_ge: 0.000942
+  h4_corr: 0.1068
+  h8_ge: 0.002337
+  h8_corr: 0.1715
+  random_pct_worse_h4: 1.00
+  random_pct_worse_h8: 1.00

@@ -1,0 +1,66 @@
+id: oi_relative_positioning_edge_v1
+hypothesis: oi_relative_positioning_edge
+version: 1
+status: paper_trading
+
+signal:
+  source: oi_ma_ratio
+  direction: inverted
+  description: "-oi_ma_ratio: OI sotto MA = long, OI sopra MA = short"
+
+entry:
+  long_if_signal_above_quantile: 0.80
+  short_if_signal_below_quantile: 0.20
+  quantile_window_bars: 200
+  note: "quantile calcolato su ultime 200 barre per adattarsi al regime corrente"
+
+exit:
+  type: time_based
+  bars: 8
+  timeframe: 1h
+  note: "exit fisso a 8 barre (8h) — allineato all'orizzonte P0 validato"
+
+risk:
+  max_concurrent_positions: 1
+  position_size: 1.0
+  note: "P2 paper: nessun capitale reale"
+
+cost_model:
+  entry_slippage_bps: 2.0
+  exit_slippage_bps: 2.0
+  taker_fee_bps: 4.0
+  total_round_trip_bps: 12.0
+  note: "Binance perpetual taker: 4bps fee + 2bps slippage per lato = 12bps totali"
+
+assets:
+  - symbol: BTCUSDT
+    exchange: binance_perpetual
+  - symbol: ETHUSDT
+    exchange: binance_perpetual
+
+data_requirements:
+  oi_period: 1h
+  klines_interval: 1h
+  min_oi_history_bars: 150
+  note: "zscore window 20 + quantile window 200 = 220 barre minime"
+
+p0_validation:
+  date: "2026-06-03"
+  btc_verdict: "PASS h4+h8"
+  eth_verdict: "PASS h8"
+  btc_p1_net_return: 0.252
+  eth_p1_net_return: 0.399
+  btc_gross_cost_ratio: 2.34
+  eth_gross_cost_ratio: 3.07
+  data_window_days: 21
+  warning: >
+    Validato su soli 21 giorni (limite API Binance OI storico).
+    Regime prevalente: bearish/correttivo. Edge principalmente dal lato SHORT
+    (shorting OI crowded). Rivalutare ogni 4 settimane di paper trading.
+
+p2_promotion_criteria:
+  min_paper_trades: 30
+  min_paper_weeks: 4
+  paper_net_expectancy: "> 0"
+  deviation_from_backtest: "< 50%"
+  note: "Promuovere a live solo se P2 supera tutti i criteri sopra"

@@ -1,0 +1,16 @@
+[Unit]
+Description=TradeVector P2 Signal Scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/tradevector-next
+ExecStart=/home/pi/tradevector-next/.venv/bin/python scripts/p2_signal_scheduler.py --symbol BTCUSDT
+EnvironmentFile=/home/pi/tradevector-next/.env
+StandardOutput=append:/home/pi/tradevector-next/logs/p2_scheduler.log
+StandardError=append:/home/pi/tradevector-next/logs/p2_scheduler.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,48 @@
+id: oi_compression_breakout
+name: OI Compression Breakout
+description: >
+  Quando l'open interest cresce rapidamente mentre il prezzo resta compresso
+  in un range stretto, il mercato accumula leva. Questa leva puo' anticipare
+  una rottura direzionale, uno squeeze o un aumento significativo della
+  volatilita' futura.
+
+data_sources:
+  - binance_open_interest
+  - binance_klines
+
+information_new: "Derivatives leverage and positioning"
+why_should_work: "OI growth during price compression may indicate leverage buildup"
+
+event_predicted: "volatility expansion or directional breakout"
+
+horizons:
+  - 1h
+  - 4h
+
+assets:
+  - BTCUSDT
+  - ETHUSDT
+
+features:
+  - oi_change_pct
+  - oi_zscore
+  - price_range_norm
+  - atr_norm
+  - oi_price_divergence
+  - funding_context
+  - volume_zscore
+
+targets:
+  primary: volatility_expansion_4h
+  secondary: directional_breakout_4h
+
+success_criteria:
+  gross_expectancy: "> 0"
+  lead_correlation: "not near zero"
+  stability: "multi-window"
+  asset_stability: "consistent across BTC/ETH"
+
+stop_criteria:
+  gross_expectancy: "~ 0"
+  lead_correlation: "~ 0"
+  contemporary_only: "effect disappears with lead > 0"

@@ -1,0 +1,94 @@
+sources:
+  binance_open_interest:
+    provider: binance
+    type: open_interest
+    endpoint: https://fapi.binance.com/fapi/v1/openInterest
+    free: true
+    requires_api_key: false
+    granularity: 5m
+    historical: true
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    status: candidate
+    notes: "Open interest storico via API pubblica Binance Futures"
+
+  binance_klines:
+    provider: binance
+    type: klines
+    endpoint: https://api.binance.com/api/v3/klines
+    free: true
+    requires_api_key: false
+    granularity:
+      - 1m
+      - 5m
+      - 15m
+      - 1h
+      - 4h
+      - 1d
+    historical: true
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    status: candidate
+    notes: "Candle OHLCV storiche, necessarie per allineamento"
+
+  binance_funding_rate:
+    provider: binance
+    type: funding_rate
+    endpoint: https://fapi.binance.com/fapi/v1/fundingRate
+    free: true
+    requires_api_key: false
+    granularity: 8h
+    historical: true
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    status: candidate
+    notes: "Funding rate storico, disponibile con granularità 8h"
+
+  bybit_open_interest:
+    provider: bybit
+    type: open_interest
+    endpoint: https://api.bybit.com/v5/market/open-interest
+    free: true
+    requires_api_key: false
+    granularity: 5m
+    historical: true
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    status: candidate
+    notes: "Open interest Bybit, da validare come cross-exchange check"
+
+  coinglass_liquidations:
+    provider: coinglass
+    type: liquidations
+    free: partial
+    requires_api_key: true
+    granularity: unknown
+    historical: unknown
+    symbols: []
+    status: candidate
+    notes: "API Coinglass per dati liquidazioni, richiede API key"
+
+  deribit_options:
+    provider: deribit
+    type: options_oi
+    free: true
+    requires_api_key: false
+    granularity: 1d
+    historical: true
+    symbols:
+      - BTC
+      - ETH
+    status: candidate
+    notes: "Open interest options via Deribit public API"
+
+priorities:
+  - binance_open_interest
+  - binance_klines
+  - binance_funding_rate
+  - bybit_open_interest
+  - coinglass_liquidations
+  - deribit_options

@@ -1,0 +1,67 @@
+id: funding_positioning_reversal
+name: Funding Rate Positioning Reversal
+description: >
+  Funding rate positivo elevato indica mercato crowded long nei perpetui.
+  Il costo di mantenere long si accumula fino a forzare liquidazioni o
+  riduzione di posizione → pressione ribassista. Viceversa per funding negativo.
+  Meccanismo: stesso della oi_relative_positioning_edge ma misurabile
+  su 2 anni di storico (funding disponibile, OI storico no).
+
+data_sources:
+  - binance_klines_storico
+  - binance_funding_storico
+
+information_new: "Costo del carry in perpetui — proxy diretto del posizionamento leva"
+why_should_work: >
+  Funding rate alto = leva long accumulata → exhaustion → reversal.
+  Funding rate basso/negativo = leva short accumulata → squeeze → reversal.
+  Stesso meccanismo confermato empiricamente su -oi_ma_ratio (P0 PASS BTC+ETH
+  su 21gg). Il funding estende il test su 2 anni e 4+ regimi di mercato.
+
+event_predicted: "mean reversion del prezzo dopo estremo di funding"
+
+primary_signal: funding_zscore
+signal_direction: inverted
+signal_note: >
+  Usa -funding_zscore (funding alto = segnale short, funding basso = segnale long).
+  L'edge atteso è nella INVERSIONE, non nella continuazione.
+
+horizons:
+  - 4h
+  - 8h
+  - 24h
+
+assets:
+  - BTCUSDT
+  - ETHUSDT
+
+features:
+  - funding_rate
+  - funding_zscore
+  - funding_cumsum_3d
+  - funding_regime_persistence
+  - funding_extreme_flag
+  - volume_zscore
+  - atr_norm
+
+targets:
+  primary: directional_h8
+  secondary: directional_h24
+
+success_criteria:
+  gross_expectancy: "> 0.0001"
+  lead_correlation: "|corr| > 0.05"
+  stability: "edge positivo in almeno 5 su 8 finestre trimestrali"
+  asset_stability: "consistente su BTC e ETH"
+  random_baseline: "batte random > 90% trials"
+
+stop_criteria:
+  gross_expectancy: "~ 0 o negativo"
+  lead_correlation: "|corr| < 0.02"
+  window_breakdown: "edge scompare in piu' di 3 finestre su 8"
+
+relationship_to_oi_hypothesis: >
+  Questo P0 e' il test di falsificazione di oi_relative_positioning_edge.
+  Se anche funding_zscore mostra edge consistente su 2 anni, la tesi
+  'leva accumulata -> reversal' e' robusta al di la' del campione corto OI.
+  Se fallisce, l'edge OI (21gg) e' probabilmente fortuna di regime.
