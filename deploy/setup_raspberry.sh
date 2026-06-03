@@ -4,7 +4,7 @@
 # Eseguire come: bash deploy/setup_raspberry.sh
 
 set -e
-PROJECT_DIR="/home/pi/tradevector-next"
+PROJECT_DIR="/home/pietro/tradevector-next"
 VENV="$PROJECT_DIR/.venv"
 
 echo "=== TradeVector P2 — Setup Raspberry Pi ==="
@@ -15,9 +15,10 @@ sudo apt-get update -qq
 sudo apt-get install -y python3 python3-pip python3-venv git -qq
 
 # 2. Clone / pull progetto
-if [ ! -d "$PROJECT_DIR" ]; then
+git config --global --add safe.directory "$PROJECT_DIR"
+if [ ! -d "$PROJECT_DIR/.git" ]; then
     echo "[2/6] Clone repository..."
-    git clone https://github.com/TUO_UTENTE/tradevector-next.git "$PROJECT_DIR"
+    git clone https://github.com/pietropassantini/tradevector-next.git "$PROJECT_DIR"
 else
     echo "[2/6] Update repository..."
     cd "$PROJECT_DIR" && git pull
