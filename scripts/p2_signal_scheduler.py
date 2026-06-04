@@ -241,7 +241,8 @@ def main():
     quantile_window = strategy["entry"]["quantile_window_bars"]
     backtest_expectancy = strategy["p0_validation"]["btc_p1_net_return"] / 188
 
-    telegram = TelegramNotifier() if not args.dry_run else TelegramNotifier(token="", chat_id="")
+    # dry-run = non scrive ledger, MA invia Telegram per testare integrazione
+    telegram = TelegramNotifier()
 
     ledger_path = (
         PROJECT_ROOT / "data" / "paper"
@@ -309,6 +310,11 @@ def main():
             )
         else:
             logger.info(f"  [DRY-RUN] {sig['direction'].upper()} @ {sig['price']:.2f}")
+            telegram.send(
+                f"🧪 <b>[DRY-RUN] {sig['direction'].upper()} — {args.symbol}</b>\n"
+                f"Prezzo: {sig['price']:,.2f} | Signal: {sig['signal_value']:.4f}\n"
+                f"<i>Nessun trade registrato (dry-run)</i>"
+            )
 
     elif sig["direction"] != "neutral" and open_positions:
         logger.info(f"  {sig['direction'].upper()} ignorato: posizione già aperta")

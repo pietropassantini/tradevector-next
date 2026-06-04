@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=oneshot
 User=pi
 WorkingDirectory=/home/pi/tradevector-next
-ExecStart=/home/pi/tradevector-next/.venv/bin/python scripts/p2_signal_scheduler.py --symbol BTCUSDT
 EnvironmentFile=/home/pi/tradevector-next/.env
+ExecStart=/home/pi/tradevector-next/.venv/bin/python /home/pi/tradevector-next/scripts/p2_signal_scheduler.py --symbol BTCUSDT
 StandardOutput=append:/home/pi/tradevector-next/logs/p2_scheduler.log
 StandardError=append:/home/pi/tradevector-next/logs/p2_scheduler.log
 
