@@ -120,6 +120,14 @@ def download_open_interest(
 
     df = oi_hist_to_dataframe(data)
     parquet_path = raw_dir / f"{symbol}_{period}.parquet"
+
+    # Accumula: merge con storico esistente, no sovrascrittura
+    if parquet_path.exists():
+        existing = pd.read_parquet(parquet_path)
+        df = pd.concat([existing, df])
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+        logger.info(f"Merged: {len(df)} rows total (was {len(existing)})")
+
     df.to_parquet(parquet_path)
 
     logger.info(f"Saved {len(df)} rows to {parquet_path}")
@@ -187,6 +195,14 @@ def download_klines(
     df = df.set_index("timestamp").sort_index()
 
     parquet_path = raw_dir / f"{symbol}_{interval}.parquet"
+
+    # Accumula: merge con storico esistente, no sovrascrittura
+    if parquet_path.exists():
+        existing = pd.read_parquet(parquet_path)
+        df = pd.concat([existing, df])
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+        logger.info(f"Merged: {len(df)} klines total (was {len(existing)})")
+
     df.to_parquet(parquet_path)
     logger.info(f"Saved {len(df)} klines to {parquet_path}")
     logger.info(f"Date range: {df.index.min()} -> {df.index.max()}")
