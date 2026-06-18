@@ -86,10 +86,14 @@ class PaperLedger:
         return pd.DataFrame(self.signals).reindex(columns=LEDGER_COLUMNS)
 
     def save(self):
+        # self.signals è già lo stato completo (record precaricati + nuovi).
+        # NON concatenare col file su disco: il chiamante ricarica il ledger
+        # in memoria a inizio run, quindi un concat raddoppierebbe i record
+        # ad ogni esecuzione.
         df = self.to_dataframe()
-        if self.ledger_path.exists():
-            existing = pd.read_parquet(self.ledger_path)
-            df = pd.concat([existing, df], ignore_index=True)
+        # Guard difensiva: anche se il ledger venisse ricaricato/registrato
+        # due volte, ogni signal_id resta una sola riga (tieni l'ultima = più avanzata).
+        df = df.drop_duplicates(subset="signal_id", keep="last")
         df.to_parquet(self.ledger_path)
         logger.info(f"Ledger saved: {len(df)} records to {self.ledger_path}")
 

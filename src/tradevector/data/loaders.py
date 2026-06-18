@@ -11,6 +11,10 @@ def load_parquet(path: Path) -> pd.DataFrame:
     if df.index.name != "timestamp" and "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
         df = df.set_index("timestamp").sort_index()
+    # Guard difensiva: timestamp duplicati (es. ribar corrente riscaricato)
+    # romperebbero allineamento e quantili a valle. Tieni l'ultima osservazione.
+    if df.index.duplicated().any():
+        df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
 
 

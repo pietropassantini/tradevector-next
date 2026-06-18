@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=pi
-WorkingDirectory=/home/pi/tradevector-next
-EnvironmentFile=/home/pi/tradevector-next/.env
-ExecStart=/home/pi/tradevector-next/.venv/bin/python /home/pi/tradevector-next/scripts/p2_signal_scheduler.py --symbol BTCUSDT
-StandardOutput=append:/home/pi/tradevector-next/logs/p2_scheduler.log
-StandardError=append:/home/pi/tradevector-next/logs/p2_scheduler.log
+User=pietro
+WorkingDirectory=/home/pietro/tradevector-next
+EnvironmentFile=/home/pietro/tradevector-next/.env
+ExecStart=/home/pietro/tradevector-next/.venv/bin/python /home/pietro/tradevector-next/scripts/p2_signal_scheduler.py --symbol BTCUSDT
+StandardOutput=append:/home/pietro/tradevector-next/logs/p2_scheduler.log
+StandardError=append:/home/pietro/tradevector-next/logs/p2_scheduler.log
 
 [Install]
 WantedBy=multi-user.target
