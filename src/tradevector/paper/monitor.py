@@ -20,7 +20,12 @@ def compare_to_backtest(
     if len(closed) == 0:
         return {"error": "no closed trades"}
 
-    paper_expectancy = closed["gross_pnl"].mean()
+    # backtest_expectancy è un rendimento frazionario per trade: va confrontato
+    # con net_pnl_pct, non con gross_pnl (che è in valuta quote).
+    if "net_pnl_pct" not in closed.columns or closed["net_pnl_pct"].isna().all():
+        return {"error": "ledger senza net_pnl_pct: formato precedente, non confrontabile"}
+
+    paper_expectancy = closed["net_pnl_pct"].mean()
     deviation = paper_expectancy - backtest_expectancy
 
     return {

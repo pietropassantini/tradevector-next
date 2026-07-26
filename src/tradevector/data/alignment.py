@@ -54,11 +54,14 @@ def align_to_candles(
         if method == "last_known":
             forward_filled = external_sorted.reindex(combined.index, method="ffill")
             if max_lookback:
-                ext_reindexed = external_sorted.reindex(combined.index)
-                gap_mask = (combined.index - ext_reindexed.index.to_series().reindex(
-                    combined.index, method="ffill"
-                ).values) > max_lookback
-                forward_filled.loc[gap_mask] = np.nan
+                # Oltre max_lookback il ffill non è più un dato ma una costante:
+                # ripetuta a lungo azzera la varianza delle feature derivate.
+                observed = external_sorted[col].reindex(combined.index).notna()
+                last_obs = pd.Series(
+                    combined.index.where(observed, pd.NaT), index=combined.index
+                ).ffill()
+                stale = (combined.index - last_obs) > max_lookback
+                forward_filled.loc[stale.fillna(True), col] = np.nan
             combined[col] = forward_filled[col]
 
         elif method == "asof":

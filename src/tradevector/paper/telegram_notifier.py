@@ -50,15 +50,17 @@ class TelegramNotifier:
         self.send(text)
 
     def signal_close(self, symbol: str, side: str, entry: float,
-                     exit_price: float, gross_pnl: float) -> None:
-        emoji = "✅" if gross_pnl >= 0 else "❌"
+                     exit_price: float, gross_pnl_pct: float,
+                     net_pnl_pct: float) -> None:
+        emoji = "✅" if net_pnl_pct >= 0 else "❌"
         text = (
             f"{emoji} <b>TRADE CHIUSO — {symbol}</b>\n"
             f"━━━━━━━━━━━━━━━━\n"
             f"📌 Side:       {side.upper()}\n"
             f"📥 Entry:      {entry:,.2f}\n"
             f"📤 Exit:       {exit_price:,.2f}\n"
-            f"💹 Gross PnL:  <b>{gross_pnl:+.4f}</b>"
+            f"💹 Gross:      {gross_pnl_pct:+.3%}\n"
+            f"💰 Net:        <b>{net_pnl_pct:+.3%}</b>"
         )
         self.send(text)
 
@@ -71,17 +73,17 @@ class TelegramNotifier:
 
     def weekly_summary(self, symbol: str, strategy_id: str, summary: dict) -> None:
         n = summary.get("n_trades", 0)
-        gross = summary.get("total_gross_pnl", 0)
-        net = summary.get("total_net_pnl", 0)
+        net_tot = summary.get("total_net_pct", 0)
+        net_exp = summary.get("net_expectancy_pct", 0)
         wr = summary.get("win_rate", 0)
-        emoji = "📈" if net >= 0 else "📉"
+        emoji = "📈" if net_tot >= 0 else "📉"
         text = (
             f"{emoji} <b>REPORT SETTIMANALE — {symbol}</b>\n"
             f"Strategia: {strategy_id}\n"
             f"━━━━━━━━━━━━━━━━\n"
             f"🔢 Trade chiusi:  {n}\n"
-            f"💹 Gross PnL:     {gross:+.4f}\n"
-            f"💰 Net PnL:       {net:+.4f}\n"
+            f"💰 Net totale:    {net_tot:+.3%}\n"
+            f"📊 Net/trade:     {net_exp:+.5f}\n"
             f"🎯 Win rate:      {wr:.1%}"
         )
         self.send(text)

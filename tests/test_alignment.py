@@ -67,6 +67,45 @@ class TestAlignToCandles:
         assert len(result) == 0
 
 
+class TestMaxLookback:
+    """Un buco lungo nella sorgente esterna non deve diventare una costante."""
+
+    @pytest.fixture
+    def candles_10h(self):
+        idx = pd.date_range("2026-01-01", periods=10, freq="1h", tz="UTC")
+        return pd.DataFrame({"close": range(10)}, index=idx)
+
+    @pytest.fixture
+    def oi_con_buco(self, candles_10h):
+        idx = candles_10h.index
+        return pd.DataFrame({"oi": [1.0, 2.0, 9.0]}, index=[idx[0], idx[1], idx[8]])
+
+    def test_gap_diventa_nan(self, candles_10h, oi_con_buco):
+        aligned = align_to_candles(
+            oi_con_buco, candles_10h, method="last_known",
+            max_lookback=pd.Timedelta("1h"),
+        )
+        assert aligned["oi"].iloc[3:8].isna().all()
+
+    def test_una_barra_mancante_viene_colmata(self, candles_10h, oi_con_buco):
+        aligned = align_to_candles(
+            oi_con_buco, candles_10h, method="last_known",
+            max_lookback=pd.Timedelta("1h"),
+        )
+        assert aligned["oi"].iloc[2] == 2.0
+
+    def test_osservazione_fresca_riparte(self, candles_10h, oi_con_buco):
+        aligned = align_to_candles(
+            oi_con_buco, candles_10h, method="last_known",
+            max_lookback=pd.Timedelta("1h"),
+        )
+        assert aligned["oi"].iloc[8] == 9.0
+
+    def test_senza_max_lookback_il_buco_resta_costante(self, candles_10h, oi_con_buco):
+        aligned = align_to_candles(oi_con_buco, candles_10h, method="last_known")
+        assert (aligned["oi"].iloc[2:8] == 2.0).all()
+
+
 class TestValidateAlignment:
     def test_coverage_calculation(self, candles_df, external_df):
         aligned = align_to_candles(external_df, candles_df, method="last_known")

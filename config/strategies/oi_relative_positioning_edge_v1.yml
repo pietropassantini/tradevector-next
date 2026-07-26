@@ -1,7 +1,7 @@
 id: oi_relative_positioning_edge_v1
 hypothesis: oi_relative_positioning_edge
 version: 1
-status: paper_trading
+status: failed_revalidation  # vedi p1_revalidation, 2026-07-26
 
 signal:
   source: oi_ma_ratio
@@ -49,7 +49,9 @@ p0_validation:
   btc_verdict: "PASS h4+h8"
   eth_verdict: "PASS h8"
   btc_p1_net_return: 0.252
+  btc_p1_n_trades: 188
   eth_p1_net_return: 0.399
+  eth_p1_n_trades: 188
   btc_gross_cost_ratio: 2.34
   eth_gross_cost_ratio: 3.07
   data_window_days: 21
@@ -57,6 +59,28 @@ p0_validation:
     Validato su soli 21 giorni (limite API Binance OI storico).
     Regime prevalente: bearish/correttivo. Edge principalmente dal lato SHORT
     (shorting OI crowded). Rivalutare ogni 4 settimane di paper trading.
+
+p1_revalidation:
+  date: "2026-07-26"
+  data_window_days: 69
+  n_bars: 1618
+  note: >
+    Ri-validazione su archivio OI accumulato (1655 barre) invece dei 21 giorni
+    dell'API. Buco 1-5 luglio mascherato a NaN, non ffillato.
+  btc_verdict: "FAIL — segno invertito fuori dalla finestra originale"
+  btc_p0_gross_expectancy_h8: -0.001207
+  btc_p0_lead_correlation_h8: -0.0854
+  btc_p1_net_return: -2.2360
+  btc_p1_n_trades: 648
+  btc_p1_net_expectancy: -0.003451
+  per_window_h8_gross_expectancy:
+    w_originale_14mag_3giu: 0.001513
+    w_giugno_4giu_30giu: -0.002742
+    w_luglio_6lug_26lug: -0.001767
+  paper_check:
+    n_trades_puliti: 28
+    net_expectancy: -0.00252
+    note: "coerente col backtest sulla stessa finestra (-0.003796)"
 
 p2_promotion_criteria:
   min_paper_trades: 30

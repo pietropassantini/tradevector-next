@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 import pandas as pd
 
@@ -22,16 +23,26 @@ LEDGER_COLUMNS = [
     "exit_price_theoretical",
     "exit_price_estimated",
     "gross_pnl",
+    "gross_pnl_pct",
     "net_pnl_estimated",
+    "net_pnl_pct",
     "slippage_estimated",
     "status",
 ]
 
 
 class PaperLedger:
-    def __init__(self, ledger_path: Optional[Path] = None):
+    """Registro dei segnali paper.
+
+    Il P&L viene tenuto sia in valuta quote sia in percentuale: il backtest P1
+    lavora in rendimenti frazionari, quindi senza la colonna in percentuale il
+    confronto paper/backtest è tra unità diverse e non significa nulla.
+    """
+
+    def __init__(self, ledger_path: Optional[Path] = None, taker_fee_bps: float = 4.0):
         self.ledger_path = ledger_path or Path("data/paper/ledger.parquet")
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        self.taker_fee_bps = taker_fee_bps
         self.signals: list[dict] = []
 
     def record_signal(
@@ -44,7 +55,13 @@ class PaperLedger:
         estimated_entry: float,
         slippage_bps: float = 2.0,
     ) -> str:
-        signal_id = f"{strategy_id}_{symbol}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        # Risoluzione al secondo: due segnali nello stesso secondo condividevano
+        # l'id e la deduplica in save() ne cancellava uno senza dirlo.
+        signal_id = (
+            f"{strategy_id}_{symbol}_"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}_"
+            f"{uuid4().hex[:4]}"
+        )
         record = {
             "signal_id": signal_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -58,7 +75,9 @@ class PaperLedger:
             "exit_price_theoretical": None,
             "exit_price_estimated": None,
             "gross_pnl": None,
+            "gross_pnl_pct": None,
             "net_pnl_estimated": None,
+            "net_pnl_pct": None,
             "slippage_estimated": float(abs(entry_price - estimated_entry) / entry_price * 10000),
             "status": "open",
         }
@@ -77,8 +96,20 @@ class PaperLedger:
                 s["exit_price_theoretical"] = exit_price
                 s["exit_price_estimated"] = estimated_exit
                 direction = 1 if s["side"] == "long" else -1
-                s["gross_pnl"] = direction * (exit_price - s["entry_price_theoretical"])
-                s["net_pnl_estimated"] = direction * (estimated_exit - s["entry_price_estimated"])
+                entry = s["entry_price_theoretical"]
+                entry_est = s["entry_price_estimated"]
+                if not entry or not entry_est:
+                    logger.error(f"Prezzo di ingresso nullo per {signal_id}, P&L non calcolabile")
+                    break
+
+                # I prezzi stimati incorporano già lo slippage (2 bps per lato),
+                # quindi dal netto restano da togliere solo le commissioni taker.
+                fees = self.taker_fee_bps / 10000 * 2
+
+                s["gross_pnl"] = direction * (exit_price - entry)
+                s["gross_pnl_pct"] = direction * (exit_price / entry - 1)
+                s["net_pnl_pct"] = direction * (estimated_exit / entry_est - 1) - fees
+                s["net_pnl_estimated"] = s["net_pnl_pct"] * entry_est
                 s["status"] = "closed"
                 break
 
@@ -101,11 +132,18 @@ class PaperLedger:
         df = self.to_dataframe()
         closed = df[df["status"] == "closed"]
         if len(closed) == 0:
-            return {"n_trades": 0, "total_gross_pnl": 0, "total_net_pnl": 0, "win_rate": 0}
+            return {
+                "n_trades": 0, "total_gross_pnl": 0, "total_net_pnl": 0,
+                "total_net_pct": 0, "net_expectancy_pct": 0, "win_rate": 0,
+            }
         return {
             "n_trades": len(closed),
             "total_gross_pnl": float(closed["gross_pnl"].sum()),
             "total_net_pnl": float(closed["net_pnl_estimated"].sum()),
-            "win_rate": float((closed["gross_pnl"] > 0).mean()),
+            # In percentuale: è l'unità in cui ragiona il backtest P1.
+            "total_net_pct": float(closed["net_pnl_pct"].sum()),
+            "gross_expectancy_pct": float(closed["gross_pnl_pct"].mean()),
+            "net_expectancy_pct": float(closed["net_pnl_pct"].mean()),
+            "win_rate": float((closed["net_pnl_pct"] > 0).mean()),
             "avg_slippage_bps": float(closed["slippage_estimated"].mean()),
         }

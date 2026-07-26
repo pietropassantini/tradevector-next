@@ -15,6 +15,7 @@ Variabili ambiente richieste per Telegram:
 """
 
 import argparse
+import json
 import logging
 import sys
 import yaml
@@ -88,6 +89,9 @@ def build_features(symbol: str) -> pd.DataFrame:
     oi_aligned = align_and_validate(
         external_df=oi_data, candles_df=candles,
         source_name=f"{symbol}_oi", method="last_known",
+        # Oltre 2h di OI ffillato le feature diventano costanti: meglio NaN,
+        # così il segnale sparisce invece di degenerare in long permanente.
+        max_lookback=pd.Timedelta("2h"),
     )
     return build_oi_features(candles=candles, oi_data=oi_aligned)
 
@@ -97,6 +101,15 @@ def compute_signal(features: pd.DataFrame, quantile_window: int = 200) -> dict:
         raise ValueError("oi_ma_ratio non trovata nelle features")
 
     signal = -features["oi_ma_ratio"].dropna()
+    if len(signal) == 0:
+        raise ValueError("Nessun valore valido di oi_ma_ratio")
+    # dropna può nascondere un buco in coda: senza questo controllo il segnale
+    # verrebbe calcolato su una barra vecchia spacciandola per l'ultima.
+    if signal.index[-1] != features.index[-1]:
+        raise ValueError(
+            f"Segnale non disponibile sull'ultima barra: ultimo valido "
+            f"{signal.index[-1]}, ultima barra {features.index[-1]}"
+        )
     if len(signal) < quantile_window:
         logger.warning(f"Dati insufficienti: {len(signal)} < {quantile_window}, riduco finestra")
         quantile_window = max(50, len(signal) // 2)
@@ -139,6 +152,7 @@ def close_expired_positions(
     exit_bars: int,
     telegram: TelegramNotifier,
     dry_run: bool,
+    slippage_bps: float = 2.0,
 ) -> int:
     now = datetime.now(timezone.utc)
     closed = 0
@@ -153,9 +167,11 @@ def close_expired_positions(
             continue
 
         exit_price = float(features["close"].iloc[-1])
-        slippage_factor = 1 - 0.0002 if s["side"] == "long" else 1 + 0.0002
+        slip = slippage_bps / 10000
+        slippage_factor = 1 - slip if s["side"] == "long" else 1 + slip
         direction = 1 if s["side"] == "long" else -1
-        gross_pnl = direction * (exit_price - s["entry_price_theoretical"])
+        gross_pct = direction * (exit_price / s["entry_price_theoretical"] - 1)
+        net_pct = gross_pct
 
         if not dry_run:
             ledger.close_signal(
@@ -163,17 +179,21 @@ def close_expired_positions(
                 exit_price=exit_price,
                 estimated_exit=exit_price * slippage_factor,
             )
+            # close_signal muta il record in place: il netto è già al netto di
+            # slippage e commissioni, non va ricalcolato qui.
+            net_pct = s.get("net_pnl_pct", gross_pct)
             telegram.signal_close(
                 symbol=s["symbol"],
                 side=s["side"],
                 entry=s["entry_price_theoretical"],
                 exit_price=exit_price,
-                gross_pnl=gross_pnl,
+                gross_pnl_pct=gross_pct,
+                net_pnl_pct=net_pct,
             )
 
         logger.info(
             f"  {'[DRY] ' if dry_run else ''}Chiuso: {s['side']} | "
-            f"{hours_open:.1f}h | pnl={gross_pnl:+.4f}"
+            f"{hours_open:.1f}h | gross={gross_pct:+.3%} net={net_pct:+.3%}"
         )
         closed += 1
     return closed
@@ -187,9 +207,11 @@ def print_summary(
     summary = ledger.summary()
     logger.info("=== P2 Summary ===")
     logger.info(f"  Trades chiusi:  {summary['n_trades']}")
-    logger.info(f"  Gross PnL:      {summary['total_gross_pnl']:+.4f}")
-    logger.info(f"  Net PnL:        {summary['total_net_pnl']:+.4f}")
-    logger.info(f"  Win rate:       {summary['win_rate']:.2%}")
+    if summary["n_trades"] > 0:
+        logger.info(f"  Net totale:     {summary['total_net_pct']:+.4%} "
+                    f"({summary['total_net_pnl']:+.2f} quote)")
+        logger.info(f"  Net expectancy: {summary['net_expectancy_pct']:+.6f}/trade")
+        logger.info(f"  Win rate:       {summary['win_rate']:.2%}")
 
     if ledger_path.exists() and summary["n_trades"] > 0:
         comp = compare_to_backtest(ledger_path, backtest_expectancy)
@@ -198,7 +220,41 @@ def print_summary(
             logger.info(f"  Expectancy bt:  {comp['backtest_expectancy']:+.6f}")
             logger.info(f"  Deviazione:     {comp['deviation']:+.6f}")
             logger.info(f"  In tolleranza:  {comp['within_tolerance']}")
+        else:
+            logger.warning(f"  Confronto backtest non disponibile: {comp['error']}")
     return summary
+
+
+def _report_state_path(strategy_id: str, symbol: str) -> Path:
+    return PROJECT_ROOT / "data" / "paper" / f"{strategy_id}_{symbol}_report_state.json"
+
+
+def _weekly_report_due(strategy_id: str, symbol: str) -> bool:
+    """Vero al massimo una volta per settimana ISO."""
+    year, week, _ = datetime.now(timezone.utc).isocalendar()
+    current = f"{year}-W{week:02d}"
+    path = _report_state_path(strategy_id, symbol)
+    if not path.exists():
+        return True
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Stato report illeggibile ({e}), lo rigenero")
+        return True
+    return state.get("last_weekly_sent") != current
+
+
+def _mark_weekly_report_sent(strategy_id: str, symbol: str) -> None:
+    year, week, _ = datetime.now(timezone.utc).isocalendar()
+    path = _report_state_path(strategy_id, symbol)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "last_weekly_sent": f"{year}-W{week:02d}",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }),
+        encoding="utf-8",
+    )
 
 
 def write_weekly_report(
@@ -227,31 +283,34 @@ def write_weekly_report(
         "## Performance",
         "",
         f"- Trades chiusi: {len(closed_df)}",
-        f"- Gross PnL totale: {closed_df['gross_pnl'].sum():+.4f}",
-        f"- Net PnL stimato: {closed_df['net_pnl_estimated'].sum():+.4f}",
-        f"- Win rate: {(closed_df['gross_pnl'] > 0).mean():.2%}",
-        f"- Expectancy media: {closed_df['gross_pnl'].mean():+.6f}",
+        f"- Net totale: {closed_df['net_pnl_pct'].sum():+.4%}",
+        f"- Net expectancy: {closed_df['net_pnl_pct'].mean():+.6f} per trade",
+        f"- Gross expectancy: {closed_df['gross_pnl_pct'].mean():+.6f} per trade",
+        f"- Win rate: {(closed_df['net_pnl_pct'] > 0).mean():.2%}",
         f"- Slippage medio: {closed_df['slippage_estimated'].mean():.2f} bps",
         "",
         "## Trades",
         "",
-        "| Signal ID | Side | Entry | Exit | Gross PnL |",
-        "|-----------|------|-------|------|-----------|",
+        "| Signal ID | Side | Entry | Exit | Net |",
+        "|-----------|------|-------|------|-----|",
     ]
     for _, row in closed_df.iterrows():
+        exit_px = row.get("exit_price_theoretical")
+        exit_str = f"{exit_px:.2f}" if pd.notna(exit_px) else "n/d"
         lines.append(
             f"| ...{str(row['signal_id'])[-12:]} | {row['side']} | "
-            f"{row['entry_price_theoretical']:.2f} | "
-            f"{row.get('exit_price_theoretical', 'N/A')} | "
-            f"{row['gross_pnl']:+.4f} |"
+            f"{row['entry_price_theoretical']:.2f} | {exit_str} | "
+            f"{row['net_pnl_pct']:+.3%} |"
         )
     lines += ["", "---", "*Report P2 generato automaticamente.*"]
     report_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info(f"Report: {report_path}")
 
-    # Telegram weekly ogni lunedì o ogni 30 trades
-    if len(closed_df) % 30 == 0 or datetime.now(timezone.utc).weekday() == 0:
+    # Il riepilogo Telegram va inviato una volta a settimana: lo scheduler gira
+    # ogni ora, quindi senza stato persistito il lunedì partirebbero 24 messaggi.
+    if _weekly_report_due(strategy_id, symbol):
         telegram.weekly_summary(symbol, strategy_id, summary)
+        _mark_weekly_report_sent(strategy_id, symbol)
 
 
 def main():
@@ -269,7 +328,13 @@ def main():
     strategy = load_strategy(args.strategy)
     exit_bars = strategy["exit"]["bars"]
     quantile_window = strategy["entry"]["quantile_window_bars"]
-    backtest_expectancy = strategy["p0_validation"]["btc_p1_net_return"] / 188
+
+    # Net expectancy per trade del backtest di riferimento, nella stessa unità
+    # del ledger (rendimento frazionario). Il numero di trade viene dal config:
+    # era cablato a 188 e restava disallineato a ogni ri-validazione.
+    key = "btc" if args.symbol.startswith("BTC") else "eth"
+    p0 = strategy["p0_validation"]
+    backtest_expectancy = p0[f"{key}_p1_net_return"] / p0[f"{key}_p1_n_trades"]
 
     # dry-run = non scrive ledger, MA invia Telegram per testare integrazione
     telegram = TelegramNotifier()
@@ -278,7 +343,10 @@ def main():
         PROJECT_ROOT / "data" / "paper"
         / f"{args.strategy}_{args.symbol}_ledger.parquet"
     )
-    ledger = PaperLedger(ledger_path=ledger_path)
+    ledger = PaperLedger(
+        ledger_path=ledger_path,
+        taker_fee_bps=strategy["cost_model"]["taker_fee_bps"],
+    )
 
     # 1. Aggiorna dati — prima di toccare il ledger, così un ledger illeggibile
     #    non impedisce la raccolta dati (l'archivio OI non è ricostruibile).
@@ -318,7 +386,8 @@ def main():
 
     # 3. Chiudi posizioni scadute
     n_closed = close_expired_positions(
-        ledger, features, exit_bars, telegram, args.dry_run
+        ledger, features, exit_bars, telegram, args.dry_run,
+        slippage_bps=strategy["cost_model"]["exit_slippage_bps"],
     )
     if n_closed:
         logger.info(f"Chiuse {n_closed} posizioni")
@@ -335,7 +404,10 @@ def main():
     open_positions = [s for s in ledger.signals if s["status"] == "open"]
     if sig["direction"] != "neutral" and len(open_positions) == 0:
         if not args.dry_run:
-            slippage_factor = 1 + 0.0002 if sig["direction"] == "long" else 1 - 0.0002
+            entry_slip = strategy["cost_model"]["entry_slippage_bps"] / 10000
+            slippage_factor = (
+                1 + entry_slip if sig["direction"] == "long" else 1 - entry_slip
+            )
             signal_id = ledger.record_signal(
                 symbol=args.symbol,
                 timeframe="1h",

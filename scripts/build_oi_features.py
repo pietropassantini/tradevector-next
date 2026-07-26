@@ -25,6 +25,8 @@ def main():
     parser.add_argument("--oi-period", default="5m", help="OI data period")
     parser.add_argument("--hypothesis-id", default="oi_compression_breakout", help="Hypothesis ID")
     parser.add_argument("--save", action="store_true", default=True, help="Save features to parquet")
+    parser.add_argument("--max-oi-staleness", default="2h",
+                        help="Oltre questa età l'OI ffillato diventa NaN (default: 2h)")
 
     args = parser.parse_args()
 
@@ -57,6 +59,9 @@ def main():
         candles_df=candles,
         source_name=f"{args.symbol}_oi",
         method="last_known",
+        # I buchi nella serie OI restano NaN invece di propagarsi come costante:
+        # una costante ffillata annulla la dispersione delle feature derivate.
+        max_lookback=pd.Timedelta(args.max_oi_staleness),
     )
 
     logger.info("Building features...")
