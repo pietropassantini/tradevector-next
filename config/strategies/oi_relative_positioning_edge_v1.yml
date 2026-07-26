@@ -48,15 +48,17 @@ p0_validation:
   date: "2026-06-03"
   btc_verdict: "PASS h4+h8"
   eth_verdict: "PASS h8"
-  # ATTENZIONE: btc_p1_net_return e' un valore LORDO, non netto. Riproducendo la
-  # finestra a costo zero si ottiene +0.2710 su 200 trade; col cost model di
-  # questo stesso file (12 bps round trip) lo stesso periodo rende +0.0310.
-  # Vedi p1_revalidation. Il criterio di promozione era tarato ~8x troppo alto.
+  # ATTENZIONE: questi totali sommano trade SOVRAPPOSTI (soglie in-sample, nessun
+  # limite di posizioni contemporanee). Si riproducono a 6 bps per lato: BTC
+  # +0.2414 su n=189, ETH +0.4006 su n=194. Non sono percorribili con
+  # max_concurrent_positions 1: contando solo i trade sequenziali la stessa
+  # finestra rende +0.0475 (BTC) e +0.1390 (ETH). Vedi p1_revalidation.
   btc_p1_net_return: 0.252
   btc_p1_n_trades: 188
-  btc_p1_net_return_ricalcolato: 0.0310
+  btc_p1_net_return_sequenziale: 0.0475
   eth_p1_net_return: 0.399
-  eth_p1_n_trades: 188
+  eth_p1_n_trades: 194  # ricostruito, non presente nel run originale
+  eth_p1_net_return_sequenziale: 0.1390
   btc_gross_cost_ratio: 2.34
   eth_gross_cost_ratio: 3.07
   data_window_days: 21
@@ -95,6 +97,33 @@ p1_revalidation:
       Con soglie in-sample e trade sovrapposti la somma dei rendimenti dava
       -2.2360 su 648 trade: non e' una perdita percorribile, richiedeva fino a
       8 posizioni aperte insieme. Il dato reale e' -25.6% composto su 116 trade.
+  eth:
+    note: >
+      Archivio OI ETH con buco 4 giu - 5 lug (il Pi non lo tracciava): due
+      blocchi indipendenti da ~21 giorni invece di una serie continua. Il
+      blocco B e' out-of-sample puro rispetto alla validazione originale.
+    blocco_a_14mag_3giu:
+      p0_gross_expectancy_h8: 0.004492
+      p0_lead_correlation_h8: 0.1206
+      permutazioni_peggiori: 1.00
+      z_vs_permutazioni: 4.63
+      p1_n_trades: 29
+      p1_net_expectancy: 0.004793
+      p1_composto: 0.1457
+      p1_win_rate: 0.552
+    blocco_b_6lug_26lug:
+      p0_gross_expectancy_h8: -0.002196
+      p0_lead_correlation_h8: -0.1192
+      permutazioni_peggiori: 0.015
+      z_vs_permutazioni: -2.43
+      p1_n_trades: 35
+      p1_net_expectancy: -0.004568
+      p1_composto: -0.1498
+      p1_win_rate: 0.286
+    eth_verdict: >
+      FAIL — segno invertito quasi simmetricamente su una finestra indipendente
+      della stessa lunghezza: da z +4.63 a z -2.43.
+
   paper_check:
     n_trades_puliti: 28
     net_expectancy: -0.00252

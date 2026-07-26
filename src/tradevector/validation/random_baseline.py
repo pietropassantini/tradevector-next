@@ -31,13 +31,14 @@ def generate_permuted_signals(
     """
     rng = np.random.default_rng(seed)
     valori = signal.dropna().to_numpy()
-    out = pd.DataFrame(index=signal.index)
+    posizioni = np.flatnonzero(signal.notna().to_numpy())
+
+    colonne = np.full((len(signal), n_trials), np.nan)
     for i in range(n_trials):
-        permutati = np.full(len(signal), np.nan)
-        posizioni = np.flatnonzero(signal.notna().to_numpy())
-        permutati[posizioni] = rng.permutation(valori)
-        out[f"random_{i}"] = permutati
-    return out
+        colonne[posizioni, i] = rng.permutation(valori)
+    return pd.DataFrame(
+        colonne, index=signal.index, columns=[f"random_{i}" for i in range(n_trials)]
+    )
 
 
 def compare_to_random(
