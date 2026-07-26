@@ -21,7 +21,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # stessi per tutte le serie futures/data, e una sola copia evita che divergano.
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from tradevector.data.binance_futures import download_metric  # noqa: E402
+from tradevector.data.binance_futures import (  # noqa: E402
+    accumulate,
+    coerce_numeric,
+    download_metric,
+)
 
 BINANCE_OI_URL = "https://fapi.binance.com/fapi/v1/openInterest"
 
@@ -114,21 +118,14 @@ def download_klines(
     ]
     df = pd.DataFrame(all_data, columns=columns)
     df["timestamp"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
-    for col in ["open", "high", "low", "close", "volume", "quote_volume",
-                "taker_buy_volume", "taker_buy_quote_volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.set_index("timestamp").sort_index()
+    # Tutte le colonne a numerico, non solo OHLCV: lasciarne alcune stringa
+    # produce un concat misto con l'archivio che parquet rifiuta di scrivere.
+    df = coerce_numeric(df)
 
     parquet_path = raw_dir / f"{symbol}_{interval}.parquet"
+    df = accumulate(df, parquet_path)
 
-    # Accumula: merge con storico esistente, no sovrascrittura
-    if parquet_path.exists():
-        existing = pd.read_parquet(parquet_path)
-        df = pd.concat([existing, df])
-        df = df[~df.index.duplicated(keep="last")].sort_index()
-        logger.info(f"Merged: {len(df)} klines total (was {len(existing)})")
-
-    df.to_parquet(parquet_path)
     logger.info(f"Saved {len(df)} klines to {parquet_path}")
     logger.info(f"Date range: {df.index.min()} -> {df.index.max()}")
 
