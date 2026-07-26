@@ -68,6 +68,15 @@ class TestAccumulo:
         assert len(out) == 1
         assert out["sumOpenInterest"].iloc[0] == 2.0
 
+    def test_deduplica_anche_alla_prima_scrittura(self, archivio):
+        """La paginazione puo' restituire record sovrapposti: un indice
+        duplicato non deve finire su disco nemmeno al primo salvataggio."""
+        ts = int(datetime(2026, 7, 1, tzinfo=timezone.utc).timestamp() * 1000)
+        out = accumulate(to_dataframe([_record(ts, oi="1.0"), _record(ts, oi="2.0")]), archivio)
+        assert len(out) == 1
+        assert out["sumOpenInterest"].iloc[0] == 2.0
+        assert not pd.read_parquet(archivio).index.duplicated().any()
+
     def test_archivio_con_colonne_stringa_si_fonde(self, archivio):
         """Gli storici vecchi tenevano alcune colonne come stringa: il concat
         con le nuove float non deve rompere la serializzazione parquet."""

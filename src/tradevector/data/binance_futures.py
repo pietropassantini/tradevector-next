@@ -133,12 +133,24 @@ def to_dataframe(data: list[dict]) -> pd.DataFrame:
 def accumulate(df: pd.DataFrame, parquet_path: Path) -> pd.DataFrame:
     """Merge non distruttivo con l'archivio esistente."""
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    before = None
     if parquet_path.exists():
         existing = coerce_numeric(pd.read_parquet(parquet_path))
         before = len(existing)
         df = pd.concat([existing, df])
-        df = df[~df.index.duplicated(keep="last")].sort_index()
+
+    # La deduplica vale anche alla prima scrittura, non solo al merge: la
+    # paginazione può restituire record sovrapposti, e un indice duplicato a
+    # valle rompe allineamento e quantili.
+    duplicati = int(df.index.duplicated().sum())
+    if duplicati:
+        logger.info(f"  {duplicati} timestamp duplicati collassati")
+        df = df[~df.index.duplicated(keep="last")]
+    df = df.sort_index()
+
+    if before is not None:
         logger.info(f"  merge: {before} -> {len(df)} righe")
+
     df.to_parquet(parquet_path)
     return df
 
