@@ -1,10 +1,9 @@
 """Download historical Binance open interest data and save as parquet."""
 
 import sys
-import json
 import time
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -17,13 +16,14 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# OI Data api endpoint (public, no API key required).
-BINANCE_OI_URL = "https://fapi.binance.com/fapi/v1/openInterest"
-BINANCE_OI_HIST_URL = "https://fapi.binance.com/futures/data/openInterestHist"
+# Il collector generico vive in libreria: fetch con fallback sullo startTime
+# fuori retention, ancoraggio all'archivio e merge non distruttivo sono gli
+# stessi per tutte le serie futures/data, e una sola copia evita che divergano.
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-# openInterestHist rifiuta con HTTP 400 (-1130, "parameter 'startTime' is invalid")
-# uno startTime sul bordo della retention. A 30gg esatti fallisce sempre, a 29 passa.
-MAX_LOOKBACK_DAYS = 29
+from tradevector.data.binance_futures import download_metric  # noqa: E402
+
+BINANCE_OI_URL = "https://fapi.binance.com/fapi/v1/openInterest"
 
 
 def load_data_sources() -> dict:
@@ -45,84 +45,6 @@ def fetch_current_oi(symbol: str) -> Optional[dict]:
         return None
 
 
-def fetch_historical_oi(
-    symbol: str,
-    period: str = "5m",
-    limit: int = 500,
-    start_time: Optional[int] = None,
-    end_time: Optional[int] = None,
-) -> list[dict]:
-    params = {
-        "symbol": symbol,
-        "period": period,
-        "limit": limit,
-    }
-    if start_time:
-        params["startTime"] = start_time
-    if end_time:
-        params["endTime"] = end_time
-
-    all_data = []
-    dropped_start_time = False
-    while True:
-        try:
-            resp = requests.get(BINANCE_OI_HIST_URL, params=params, timeout=30)
-            # startTime fuori dalla finestra di retention: senza il parametro
-            # l'endpoint restituisce comunque tutta la finestra ancora disponibile.
-            if resp.status_code == 400 and "startTime" in params and not dropped_start_time:
-                logger.warning(
-                    f"startTime rifiutato ({resp.text[:80]}), riprovo senza: "
-                    "verranno restituiti solo i record ancora in retention"
-                )
-                params.pop("startTime")
-                dropped_start_time = True
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            if not data:
-                break
-            all_data.extend(data)
-            if len(data) < limit:
-                break
-            params["startTime"] = data[-1]["timestamp"] + 1
-            dropped_start_time = True  # la paginazione riparte da un ts sicuramente valido
-            time.sleep(0.2)
-        except Exception as e:
-            logger.error(f"Failed to fetch historical OI for {symbol}: {e}")
-            break
-
-    logger.info(f"Fetched {len(all_data)} OI records for {symbol}")
-    return all_data
-
-
-def resolve_start_time(parquet_path: Path, days: int) -> int:
-    """Riparte dall'ultimo timestamp già in archivio, senza superare la retention.
-
-    L'archivio locale è l'unico posto dove la storia OI oltre ~21 giorni
-    sopravvive: l'endpoint ne restituisce al massimo ~500 record.
-    """
-    floor_ms = int(
-        (datetime.now(timezone.utc) - timedelta(days=min(days, MAX_LOOKBACK_DAYS))).timestamp()
-        * 1000
-    )
-    if not parquet_path.exists():
-        return floor_ms
-    existing = pd.read_parquet(parquet_path)
-    if len(existing) == 0:
-        return floor_ms
-    last_ms = int(existing.index.max().timestamp() * 1000)
-    return max(last_ms + 1, floor_ms)
-
-
-def oi_hist_to_dataframe(data: list[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(data)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-    df["sumOpenInterest"] = pd.to_numeric(df["sumOpenInterest"], errors="coerce")
-    df["sumOpenInterestValue"] = pd.to_numeric(df["sumOpenInterestValue"], errors="coerce")
-    df = df.set_index("timestamp").sort_index()
-    return df
-
-
 def download_open_interest(
     symbol: str = "BTCUSDT",
     period: str = "5m",
@@ -130,55 +52,14 @@ def download_open_interest(
     start_time: Optional[int] = None,
     end_time: Optional[int] = None,
     raw_dir: Optional[Path] = None,
-    days: int = 30,
+    days: int = 29,
 ) -> bool:
-    if raw_dir is None:
-        raw_dir = PROJECT_ROOT / "data" / "raw" / "binance" / "open_interest" / symbol
-
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    parquet_path = raw_dir / f"{symbol}_{period}.parquet"
-
-    if start_time is None:
-        start_time = resolve_start_time(parquet_path, days)
-        logger.info(
-            "startTime: "
-            f"{datetime.fromtimestamp(start_time / 1000, timezone.utc).isoformat()}"
-        )
-
-    data = fetch_historical_oi(
-        symbol=symbol,
-        period=period,
-        limit=limit,
-        start_time=start_time,
-        end_time=end_time,
+    if start_time is not None or end_time is not None:
+        logger.warning("start-time/end-time espliciti non supportati, uso l'archivio")
+    return download_metric(
+        metric="open_interest", symbol=symbol, period=period,
+        limit=limit, days=days, save_raw_json=True,
     )
-
-    if not data:
-        # Fallimento silenzioso: è così che l'OI è rimasto congelato 25 giorni
-        # mentre lo scheduler continuava a loggare "Dati aggiornati".
-        logger.error(f"Nessun dato OI recuperato per {symbol} — download FALLITO")
-        return False
-
-    raw_path = raw_dir / f"{symbol}_{period}_raw.json"
-    with open(raw_path, "w") as f:
-        json.dump(data, f, default=str)
-
-    df = oi_hist_to_dataframe(data)
-
-    # Accumula: merge con storico esistente, no sovrascrittura
-    if parquet_path.exists():
-        existing = pd.read_parquet(parquet_path)
-        df = pd.concat([existing, df])
-        df = df[~df.index.duplicated(keep="last")].sort_index()
-        logger.info(f"Merged: {len(df)} rows total (was {len(existing)})")
-
-    df.to_parquet(parquet_path)
-
-    logger.info(f"Saved {len(df)} rows to {parquet_path}")
-    logger.info(f"Date range: {df.index.min()} -> {df.index.max()}")
-    logger.info(f"Raw response saved to {raw_path}")
-
-    return True
 
 
 def download_klines(

@@ -53,9 +53,15 @@ mkdir -p "$PROJECT_DIR/logs"
 echo "[5/6] Installazione systemd service..."
 sudo cp "$PROJECT_DIR/deploy/tradevector-p2.service" /etc/systemd/system/
 sudo cp "$PROJECT_DIR/deploy/tradevector-p2.timer" /etc/systemd/system/
+# Il collector e' indipendente dalle strategie: l'archivio deve continuare ad
+# accumularsi anche se lo scheduler P2 viene fermato.
+sudo cp "$PROJECT_DIR/deploy/tradevector-collector.service" /etc/systemd/system/
+sudo cp "$PROJECT_DIR/deploy/tradevector-collector.timer" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable tradevector-p2.timer
 sudo systemctl start tradevector-p2.timer
+sudo systemctl enable tradevector-collector.timer
+sudo systemctl start tradevector-collector.timer
 
 echo "[6/6] Test dry-run..."
 cd "$PROJECT_DIR"

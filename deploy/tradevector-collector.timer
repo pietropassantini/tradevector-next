@@ -1,0 +1,14 @@
+[Unit]
+Description=TradeVector collector — ogni ora al minuto 20
+Requires=tradevector-collector.service
+
+[Timer]
+# Sfasato rispetto allo scheduler P2 (:05) per non sovrapporre le chiamate API.
+OnCalendar=*-*-* *:20:00
+RandomizedDelaySec=60
+# Recupera la corsa persa dopo un riavvio: ogni ora saltata e' storia che
+# esce definitivamente dalla finestra di retention.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

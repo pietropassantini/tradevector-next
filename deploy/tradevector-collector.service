@@ -1,0 +1,15 @@
+[Unit]
+Description=TradeVector — accumulo serie futures/data Binance (retention ~21gg)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pietro
+WorkingDirectory=/home/pietro/tradevector-next
+ExecStart=/home/pietro/tradevector-next/.venv/bin/python /home/pietro/tradevector-next/scripts/collect_futures_metrics.py
+StandardOutput=append:/home/pietro/tradevector-next/logs/collector.log
+StandardError=append:/home/pietro/tradevector-next/logs/collector.log
+
+[Install]
+WantedBy=multi-user.target
