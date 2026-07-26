@@ -50,15 +50,15 @@ class TelegramNotifier:
         self.send(text)
 
     def signal_close(self, symbol: str, side: str, entry: float,
-                     exit_price: float, gross_pnl_pct: float) -> None:
-        emoji = "✅" if gross_pnl_pct >= 0 else "❌"
+                     exit_price: float, gross_pnl: float) -> None:
+        emoji = "✅" if gross_pnl >= 0 else "❌"
         text = (
             f"{emoji} <b>TRADE CHIUSO — {symbol}</b>\n"
             f"━━━━━━━━━━━━━━━━\n"
             f"📌 Side:       {side.upper()}\n"
             f"📥 Entry:      {entry:,.2f}\n"
             f"📤 Exit:       {exit_price:,.2f}\n"
-            f"💹 Gross PnL:  <b>{gross_pnl_pct:+.3%}</b>"
+            f"💹 Gross PnL:  <b>{gross_pnl:+.4f}</b>"
         )
         self.send(text)
 

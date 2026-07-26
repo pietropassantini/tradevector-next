@@ -40,7 +40,7 @@ def load_strategy(strategy_id: str) -> dict:
         return yaml.safe_load(f)
 
 
-def refresh_data(symbol: str) -> None:
+def refresh_data(symbol: str) -> bool:
     import subprocess
     logger.info(f"Aggiornamento dati {symbol}...")
     result = subprocess.run(
@@ -51,9 +51,31 @@ def refresh_data(symbol: str) -> None:
         capture_output=True, text=True, cwd=str(PROJECT_ROOT),
     )
     if result.returncode != 0:
-        logger.warning(f"Download warning: {result.stderr[-200:]}")
-    else:
-        logger.info("Dati aggiornati.")
+        # Lo stdout del downloader va tenuto: è lì che finisce il motivo del
+        # fallimento, e senza di esso il guasto resta invisibile nei log.
+        logger.error(f"Download FALLITO (rc={result.returncode})")
+        logger.error(f"  stdout: {result.stdout[-500:]}")
+        logger.error(f"  stderr: {result.stderr[-500:]}")
+        return False
+    logger.info("Dati aggiornati.")
+    return True
+
+
+def check_data_freshness(symbol: str, max_age_hours: float = 3.0) -> None:
+    """Blocca il run se l'OI è vecchio: ffillato diventa costante, e un segnale
+    costante fa scattare `current >= q80` a ogni barra (long forzato).
+    """
+    from tradevector.data.loaders import load_klines, load_oi_data
+
+    now = datetime.now(timezone.utc)
+    for name, df in (("OI", load_oi_data(symbol, "1h")), ("klines", load_klines(symbol, "1h"))):
+        age = (now - df.index.max()).total_seconds() / 3600
+        if age > max_age_hours:
+            raise RuntimeError(
+                f"{name} {symbol} obsoleto: ultimo dato {df.index.max()} "
+                f"({age:.1f}h fa, soglia {max_age_hours}h)"
+            )
+        logger.info(f"  {name}: ultimo dato {df.index.max()} ({age:.1f}h fa)")
 
 
 def build_features(symbol: str) -> pd.DataFrame:
@@ -85,7 +107,15 @@ def compute_signal(features: pd.DataFrame, quantile_window: int = 200) -> dict:
     current = float(signal.iloc[-1])
     current_price = float(features["close"].iloc[-1])
 
-    if current >= q80:
+    # Con q80 == q20 la condizione `current >= q80` è sempre vera e la strategia
+    # degenera in long permanente. Non deve mai accadere se i dati sono freschi.
+    if q80 - q20 < 1e-6:
+        logger.error(
+            f"Distribuzione degenere (q20={q20:.6f} q80={q80:.6f}): "
+            "segnale privo di dispersione, nessun trade"
+        )
+        direction = "neutral"
+    elif current >= q80:
         direction = "long"
     elif current <= q20:
         direction = "short"
@@ -125,7 +155,7 @@ def close_expired_positions(
         exit_price = float(features["close"].iloc[-1])
         slippage_factor = 1 - 0.0002 if s["side"] == "long" else 1 + 0.0002
         direction = 1 if s["side"] == "long" else -1
-        gross_pnl_pct = direction * (exit_price / s["entry_price_theoretical"] - 1)
+        gross_pnl = direction * (exit_price - s["entry_price_theoretical"])
 
         if not dry_run:
             ledger.close_signal(
@@ -138,12 +168,12 @@ def close_expired_positions(
                 side=s["side"],
                 entry=s["entry_price_theoretical"],
                 exit_price=exit_price,
-                gross_pnl_pct=gross_pnl_pct,
+                gross_pnl=gross_pnl,
             )
 
         logger.info(
             f"  {'[DRY] ' if dry_run else ''}Chiuso: {s['side']} | "
-            f"{hours_open:.1f}h | pnl={gross_pnl_pct:+.4%}"
+            f"{hours_open:.1f}h | pnl={gross_pnl:+.4f}"
         )
         closed += 1
     return closed
@@ -250,17 +280,34 @@ def main():
     )
     ledger = PaperLedger(ledger_path=ledger_path)
 
+    # 1. Aggiorna dati — prima di toccare il ledger, così un ledger illeggibile
+    #    non impedisce la raccolta dati (l'archivio OI non è ricostruibile).
+    if not args.no_download:
+        if not refresh_data(args.symbol):
+            msg = f"Download dati fallito per {args.symbol} — run interrotto"
+            logger.error(msg)
+            telegram.error(msg)
+            sys.exit(1)
+
+    # 2. Freschezza: su dati vecchi il segnale degenera, meglio non operare
+    if args.no_download:
+        logger.warning("--no-download: controllo freschezza saltato")
+    else:
+        try:
+            check_data_freshness(args.symbol)
+        except Exception as e:
+            msg = f"Dati non aggiornati: {e}"
+            logger.error(msg)
+            telegram.error(msg)
+            sys.exit(1)
+
     if ledger_path.exists():
         existing = pd.read_parquet(ledger_path)
         ledger.signals = existing.to_dict("records")
         open_count = sum(1 for s in ledger.signals if s["status"] == "open")
         logger.info(f"Ledger: {len(ledger.signals)} totali, {open_count} aperti")
 
-    # 1. Aggiorna dati
-    if not args.no_download:
-        refresh_data(args.symbol)
-
-    # 2. Features
+    # 3. Features
     try:
         features = build_features(args.symbol)
     except Exception as e:
