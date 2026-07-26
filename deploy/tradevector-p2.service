@@ -1,5 +1,5 @@
 [Unit]
-Description=TradeVector P2 Signal Scheduler
+Description=TradeVector P2 Signal Scheduler (dry-run)
 After=network-online.target
 Wants=network-online.target
 
@@ -7,8 +7,11 @@ Wants=network-online.target
 Type=oneshot
 User=pietro
 WorkingDirectory=/home/pietro/tradevector-next
-EnvironmentFile=/home/pietro/tradevector-next/.env
-ExecStart=/home/pietro/tradevector-next/.venv/bin/python /home/pietro/tradevector-next/scripts/p2_signal_scheduler.py --symbol BTCUSDT
+# oi_relative_positioning_edge_v1 e' failed_revalidation (2026-07-26): lo
+# scheduler gira in --dry-run, calcola il segnale ma non scrive piu' il ledger.
+# Senza EnvironmentFile il notifier resta disabilitato e non arrivano Telegram.
+# Per riattivare il paper trading: rimettere EnvironmentFile e togliere --dry-run.
+ExecStart=/home/pietro/tradevector-next/.venv/bin/python /home/pietro/tradevector-next/scripts/p2_signal_scheduler.py --symbol BTCUSDT --dry-run
 StandardOutput=append:/home/pietro/tradevector-next/logs/p2_scheduler.log
 StandardError=append:/home/pietro/tradevector-next/logs/p2_scheduler.log
 
