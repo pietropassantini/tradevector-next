@@ -73,9 +73,15 @@ p1_revalidation:
     Ri-validazione su archivio OI accumulato (1655 barre) invece dei 21 giorni
     dell'API. Buco 1-5 luglio mascherato a NaN, non ffillato.
   btc_verdict: "FAIL — segno invertito fuori dalla finestra originale"
-  btc_p0_gross_expectancy_h8: -0.001207
+  btc_p0_gross_expectancy_h8: -0.001640
+  btc_p0_gross_expectancy_h8_in_sample: -0.001207
   btc_p0_lead_correlation_h8: -0.0854
   harness: "soglie rolling 200 barre (causali) + max 1 posizione, come in produzione"
+  baseline: "permutazione del segnale, 200 trial: 0 peggiori del reale a h4 e h8"
+  per_window_p0_gross_expectancy_h8:
+    w_originale_14mag_3giu: 0.001815
+    w_paper_4giu_1lug: -0.002921
+    w_luglio_6lug_26lug: -0.001939
   btc_p1_n_trades: 116
   btc_p1_net_expectancy: -0.002501
   btc_p1_net_return_compounded: -0.2564

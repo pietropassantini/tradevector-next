@@ -13,23 +13,31 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def generate_random_signals(
-    index: pd.DatetimeIndex,
-    signal_frequency: float,
+def generate_permuted_signals(
+    signal: pd.Series,
     n_trials: int = 100,
     seed: int = 42,
 ) -> pd.DataFrame:
+    """Baseline per permutazione: stessi valori del segnale, ordine rimescolato.
+
+    Conserva esattamente la distribuzione del segnale, quindi le soglie sui
+    quantili si comportano allo stesso modo e il confronto misura solo ciò che
+    interessa: se l'istante in cui un valore si presenta porta informazione.
+
+    Il baseline precedente generava una serie sparsa di -1/0/+1: con la maggior
+    parte dei valori a zero il quantile 0.8 cadeva anch'esso su zero, quindi il
+    "top quantile" finiva per contenere l'80-85% delle osservazioni e la sua
+    gross expectancy era zero per costruzione, non per assenza di edge.
+    """
     rng = np.random.default_rng(seed)
-    n = len(index)
-    n_signals = int(n * signal_frequency)
-    random_signals = pd.DataFrame(index=index)
+    valori = signal.dropna().to_numpy()
+    out = pd.DataFrame(index=signal.index)
     for i in range(n_trials):
-        positions = np.zeros(n)
-        signal_idx = rng.choice(n, size=max(n_signals, 1), replace=False)
-        directions = rng.choice([1, -1], size=len(signal_idx))
-        positions[signal_idx] = directions
-        random_signals[f"random_{i}"] = positions
-    return random_signals
+        permutati = np.full(len(signal), np.nan)
+        posizioni = np.flatnonzero(signal.notna().to_numpy())
+        permutati[posizioni] = rng.permutation(valori)
+        out[f"random_{i}"] = permutati
+    return out
 
 
 def compare_to_random(
@@ -71,6 +79,7 @@ def run_random_baseline(
     horizons: list[int],
     n_trials: int = 100,
     seed: int = 42,
+    quantile_window: Optional[int] = 200,
 ) -> dict:
     from .signal_probe import compute_forward_returns, compute_signal_metrics
 
@@ -78,14 +87,19 @@ def run_random_baseline(
     signal = features[signal_column]
     forward_returns = compute_forward_returns(prices, horizons)
 
-    actual_metrics = compute_signal_metrics(signal, forward_returns, horizons)
+    # Segnale reale e permutazioni devono passare dalla stessa costruzione delle
+    # soglie, altrimenti il confronto misura la differenza tra due metodi.
+    actual_metrics = compute_signal_metrics(
+        signal, forward_returns, horizons, quantile_window=quantile_window
+    )
 
-    signal_frequency = (signal.abs() > signal.std()).mean() if signal.std() > 0 else 0.1
-    random_signals = generate_random_signals(features.index, signal_frequency, n_trials, seed)
+    random_signals = generate_permuted_signals(signal, n_trials, seed)
 
     random_metrics_list = []
     for col in random_signals.columns:
-        r_metrics = compute_signal_metrics(random_signals[col], forward_returns, horizons)
+        r_metrics = compute_signal_metrics(
+            random_signals[col], forward_returns, horizons, quantile_window=quantile_window
+        )
         random_metrics_list.append(r_metrics)
 
     comparison = {}

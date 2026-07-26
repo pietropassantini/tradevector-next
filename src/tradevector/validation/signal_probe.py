@@ -24,12 +24,40 @@ def compute_forward_returns(
     return fwd
 
 
+def compute_quantile_masks(
+    s: pd.Series,
+    top_quantile: float,
+    bottom_quantile: float,
+    quantile_window: Optional[int],
+) -> tuple[pd.Series, pd.Series]:
+    """Maschere top/bottom, per default calcolate su finestra mobile.
+
+    Con `quantile_window=None` le soglie vengono dall'intero campione: è come
+    decidere alla barra t usando quantili che si conoscono solo alla fine della
+    serie. Su un segnale il cui regime si sposta nel tempo — il caso tipico dei
+    dati di posizionamento — questo gonfia l'edge apparente.
+    """
+    if quantile_window is None:
+        return s >= s.quantile(top_quantile), s <= s.quantile(bottom_quantile)
+
+    min_periods = max(30, quantile_window // 4)
+    rolling = s.rolling(quantile_window, min_periods=min_periods)
+    hi = rolling.quantile(top_quantile)
+    lo = rolling.quantile(bottom_quantile)
+
+    # Warmup e distribuzioni senza dispersione restano fuori: con hi == lo la
+    # condizione `s >= hi` sarebbe sempre vera e classificherebbe tutto come top.
+    valido = hi.notna() & lo.notna() & ((hi - lo) > 1e-12)
+    return (s >= hi) & valido, (s <= lo) & valido
+
+
 def compute_signal_metrics(
     signal: pd.Series,
     forward_returns: pd.DataFrame,
     horizons: list[int],
     top_quantile: float = 0.8,
     bottom_quantile: float = 0.2,
+    quantile_window: Optional[int] = 200,
 ) -> dict:
     results = {}
 
@@ -47,12 +75,18 @@ def compute_signal_metrics(
         s = aligned["signal"]
         r = aligned["fwd_return"]
 
-        top_mask = s >= s.quantile(top_quantile)
-        bottom_mask = s <= s.quantile(bottom_quantile)
+        top_mask, bottom_mask = compute_quantile_masks(
+            s, top_quantile, bottom_quantile, quantile_window
+        )
+        if top_mask.sum() == 0 or bottom_mask.sum() == 0:
+            results[f"h{h}"] = {
+                "error": "no observations in top/bottom quantile",
+                "sample_size": int(len(aligned)),
+            }
+            continue
 
         top_returns = r[top_mask]
         bottom_returns = r[bottom_mask]
-        all_returns = r
 
         gross_long = top_returns.mean() if len(top_returns) > 0 else 0
         gross_short = -bottom_returns.mean() if len(bottom_returns) > 0 else 0
@@ -77,6 +111,7 @@ def compute_signal_metrics(
             "tail_loss_short": float(-bottom_returns.quantile(0.95)),
             "top_count": int(top_mask.sum()),
             "bottom_count": int(bottom_mask.sum()),
+            "thresholds": "in_sample" if quantile_window is None else f"rolling_{quantile_window}",
         }
 
     return results
@@ -87,6 +122,7 @@ def run_signal_probe(
     signal_column: str,
     horizons: list[int],
     window_splits: Optional[list[dict]] = None,
+    quantile_window: Optional[int] = 200,
 ) -> dict:
     if signal_column not in features.columns:
         raise ValueError(f"Signal column '{signal_column}' not in features")
@@ -96,7 +132,9 @@ def run_signal_probe(
 
     forward_returns = compute_forward_returns(prices, horizons)
 
-    full_metrics = compute_signal_metrics(signal, forward_returns, horizons)
+    full_metrics = compute_signal_metrics(
+        signal, forward_returns, horizons, quantile_window=quantile_window
+    )
 
     window_results = {}
     if window_splits:
@@ -106,7 +144,9 @@ def run_signal_probe(
                 continue
             w_signal = signal[mask]
             w_fwd = forward_returns.loc[mask]
-            window_results[w["name"]] = compute_signal_metrics(w_signal, w_fwd, horizons)
+            window_results[w["name"]] = compute_signal_metrics(
+                w_signal, w_fwd, horizons, quantile_window=quantile_window
+            )
 
     return {
         "full_period": full_metrics,

@@ -55,8 +55,19 @@ def main():
     parser.add_argument("--output-dir", default=None, help="Override output directory")
     parser.add_argument("--invert-signal", action="store_true",
                         help="Negate the signal before probing (test anti-correlated direction)")
+    parser.add_argument("--quantile-window", type=int, default=200,
+                        help="Finestra causale per le soglie top/bottom (default: 200)")
+    parser.add_argument("--in-sample-thresholds", action="store_true",
+                        help="Soglie sull'intero campione: look-ahead, solo per confronto storico")
 
     args = parser.parse_args()
+
+    quantile_window = None if args.in_sample_thresholds else args.quantile_window
+    if quantile_window is None:
+        logger.warning(
+            "Soglie calcolate sull'intero campione: alla barra t quei quantili "
+            "non erano osservabili, l'edge misurato e' ottimistico"
+        )
 
     hypothesis = load_hypothesis(args.hypothesis)
     logger.info(f"Hypothesis: {hypothesis['name']} ({args.hypothesis})")
@@ -93,6 +104,7 @@ def main():
         signal_column=args.signal_column,
         horizons=leads,
         window_splits=window_splits,
+        quantile_window=quantile_window,
     )
 
     full_metrics = probe_results["full_period"]
@@ -112,6 +124,7 @@ def main():
         signal_column=args.signal_column,
         horizons=leads,
         n_trials=args.n_random_trials,
+        quantile_window=quantile_window,
     )
 
     for h_key, comp in random_results["random_baseline"].items():
