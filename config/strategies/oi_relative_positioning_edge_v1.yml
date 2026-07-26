@@ -48,8 +48,13 @@ p0_validation:
   date: "2026-06-03"
   btc_verdict: "PASS h4+h8"
   eth_verdict: "PASS h8"
+  # ATTENZIONE: btc_p1_net_return e' un valore LORDO, non netto. Riproducendo la
+  # finestra a costo zero si ottiene +0.2710 su 200 trade; col cost model di
+  # questo stesso file (12 bps round trip) lo stesso periodo rende +0.0310.
+  # Vedi p1_revalidation. Il criterio di promozione era tarato ~8x troppo alto.
   btc_p1_net_return: 0.252
   btc_p1_n_trades: 188
+  btc_p1_net_return_ricalcolato: 0.0310
   eth_p1_net_return: 0.399
   eth_p1_n_trades: 188
   btc_gross_cost_ratio: 2.34
