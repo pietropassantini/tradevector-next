@@ -75,17 +75,27 @@ p1_revalidation:
   btc_verdict: "FAIL — segno invertito fuori dalla finestra originale"
   btc_p0_gross_expectancy_h8: -0.001207
   btc_p0_lead_correlation_h8: -0.0854
-  btc_p1_net_return: -2.2360
-  btc_p1_n_trades: 648
-  btc_p1_net_expectancy: -0.003451
-  per_window_h8_gross_expectancy:
-    w_originale_14mag_3giu: 0.001513
-    w_giugno_4giu_30giu: -0.002742
-    w_luglio_6lug_26lug: -0.001767
+  harness: "soglie rolling 200 barre (causali) + max 1 posizione, come in produzione"
+  btc_p1_n_trades: 116
+  btc_p1_net_expectancy: -0.002501
+  btc_p1_net_return_compounded: -0.2564
+  btc_p1_win_rate: 0.319
+  per_window_net_expectancy:
+    w_originale_14mag_3giu: {n: 30, net_per_trade: 0.001582, composto: 0.0470}
+    w_paper_4giu_1lug: {n: 44, net_per_trade: -0.004168, composto: -0.1707}
+    w_luglio_6lug_26lug: {n: 33, net_per_trade: -0.002664, composto: -0.0847}
+  bias_harness_precedente:
+    note: >
+      Con soglie in-sample e trade sovrapposti la somma dei rendimenti dava
+      -2.2360 su 648 trade: non e' una perdita percorribile, richiedeva fino a
+      8 posizioni aperte insieme. Il dato reale e' -25.6% composto su 116 trade.
   paper_check:
     n_trades_puliti: 28
     net_expectancy: -0.00252
-    note: "coerente col backtest sulla stessa finestra (-0.003796)"
+    note: >
+      Coerente col backtest sulla stessa finestra (-0.004168 su 44 trade). I
+      conteggi differiscono perche' il paper e' rimasto in stallo dal 5 al 18
+      giugno con una posizione aperta bloccante.
 
 p2_promotion_criteria:
   min_paper_trades: 30

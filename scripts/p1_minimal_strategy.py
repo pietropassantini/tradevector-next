@@ -39,8 +39,14 @@ def main():
                         help="Quantile soglia per posizione long")
     parser.add_argument("--entry-short", type=float, default=0.1,
                         help="Quantile soglia per posizione short")
-    parser.add_argument("--cost-bps", type=float, default=5.0,
-                        help="Costo per trade in bps (default: 5bps)")
+    parser.add_argument("--cost-bps", type=float, default=6.0,
+                        help="Costo per lato in bps, applicato a entrata e uscita (default: 6)")
+    parser.add_argument("--quantile-window", type=int, default=200,
+                        help="Finestra causale per le soglie, come in produzione (default: 200)")
+    parser.add_argument("--in-sample-thresholds", action="store_true",
+                        help="Soglie sull'intero campione: look-ahead, solo per confronto storico")
+    parser.add_argument("--max-concurrent", type=int, default=1,
+                        help="Posizioni contemporanee; 0 = illimitate, trade sovrapposti")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
@@ -51,8 +57,18 @@ def main():
         features = features.copy()
         features[args.signal_column] = -features[args.signal_column]
 
-    complete = features.dropna(subset=[args.signal_column, "close"])
-    logger.info(f"Righe complete per backtest: {len(complete)}")
+    # Solo il prezzo deve esserci: scartare le righe con segnale NaN
+    # accorcerebbe la serie e "8 barre dopo" non sarebbe piu' 8 ore dopo.
+    complete = features.dropna(subset=["close"])
+    logger.info(f"Barre disponibili per backtest: {len(complete)}")
+
+    max_concurrent = None if args.max_concurrent == 0 else args.max_concurrent
+    quantile_window = None if args.in_sample_thresholds else args.quantile_window
+    if quantile_window is None:
+        logger.warning(
+            "Soglie calcolate sull'intero campione: look-ahead, "
+            "risultato non confrontabile con l'esecuzione live"
+        )
 
     result = run_minimal_strategy(
         features=complete,
@@ -61,26 +77,39 @@ def main():
         entry_threshold_short=args.entry_short,
         exit_bars=args.horizon,
         cost_bps=args.cost_bps,
+        quantile_window=quantile_window,
+        max_concurrent=max_concurrent,
     )
 
-    strategy_returns = complete["close"].pct_change().fillna(0)
-    strat_col = "strategy_returns_net"
-
-    equity = compute_equity_curve(
-        pd.Series(
-            [result["total_net_return"] / max(result["n_trades"], 1)] * len(complete),
-            index=complete.index,
+    trades = result["trades"]
+    if trades and max_concurrent == 1:
+        # Trade in sequenza: un unico capitale li attraversa, il composto e' reale.
+        net_seq = pd.Series(
+            [t["net_return"] for t in trades],
+            index=pd.DatetimeIndex([t["exit_time"] for t in trades]),
         )
-    )
+        equity = compute_equity_curve(net_seq)
+    else:
+        net_seq = pd.Series(dtype=float)
+        equity = pd.Series(dtype=float)
 
     logger.info("=== P1 Risultati ===")
+    logger.info(f"  Soglie:            {result['thresholds']}")
+    logger.info(f"  Max concurrent:    {result['max_concurrent']}")
     logger.info(f"  N trades:          {result['n_trades']}")
-    logger.info(f"  Total gross ret:   {result['total_gross_return']:+.4f}")
-    logger.info(f"  Total net ret:     {result['total_net_return']:+.4f}")
+    logger.info(f"  Somma gross ret:   {result['total_gross_return']:+.4f}")
+    logger.info(f"  Somma net ret:     {result['total_net_return']:+.4f}")
+    if result["n_trades"] and max_concurrent == 1:
+        logger.info(f"  Net composto:      {result['net_return_compounded']:+.4f}")
     logger.info(f"  Gross expectancy:  {result['gross_expectancy']:+.6f}")
     logger.info(f"  Net expectancy:    {result['net_expectancy']:+.6f}")
     logger.info(f"  Win rate:          {result['win_rate']:.2%}")
     logger.info(f"  Gross/cost ratio:  {result['gross_cost_ratio']:.2f}x")
+
+    if len(equity) > 1:
+        metrics = backtest_metrics(equity, net_seq, periods_per_year=len(net_seq))
+        logger.info(f"  Max drawdown:      {metrics['max_drawdown']:.2%}")
+        result["max_drawdown"] = metrics["max_drawdown"]
 
     net_positive = result["total_net_return"] > 0
     net_exp_positive = result["net_expectancy"] > 0
@@ -110,7 +139,8 @@ def main():
                 "inverted": args.invert_signal,
                 "horizon": args.horizon,
                 "cost_bps": args.cost_bps,
-                "results": result,
+                "results": {k: v for k, v in result.items() if k != "trades"},
+                "trades": result["trades"],
             },
             f, indent=2, default=str,
         )
